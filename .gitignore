@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Environment variables
+.env
+.env.*
+
+# Frontend
+node_modules/
+dist/
+
+# IDE
+.vscode/
+
+# Testing
+.pytest_cache/
+.coverage
+
+# Logs
+*.log
