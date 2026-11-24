@@ -1,65 +1,66 @@
+
 import httpx
 import time
 
-CELESTRAK_URL = (
-    "https://celestrak.org/NORAD/elements/"
-    "gp.php?CATNR=25544&FORMAT=JSON"
-)
+# Separate cache for satellite groups
+_group_cache = {}
 
-CACHE_TTL = 2 * 60 * 60  # 2 hours
-
-_cached_records = None
-_last_fetch_time = 0.0
+GROUP_CACHE_TTL = 2 * 60 * 60
 
 
-def fetch_satellite_data(force_refresh=False):
-
-    global _cached_records, _last_fetch_time
+def fetch_group_data(group="STATIONS", force_refresh=False):
+    """
+    Fetch OMM JSON records for a CelesTrak satellite group.
+    """
 
     current_time = time.monotonic()
 
-    # Check whether valid cached data exists
+    cached = _group_cache.get(group)
+
+    # Return cached records if they are still fresh
     if (
         not force_refresh
-        and _cached_records is not None
-        and current_time - _last_fetch_time < CACHE_TTL
+        and cached is not None
+        and current_time - cached["fetched_at"] < GROUP_CACHE_TTL
     ):
-        print("Using cached CelesTrak data...")
-        return _cached_records
+        print(f"Using cached {group} data...")
+        return cached["records"]
 
-    print("Fetching satellite data from CelesTrak...")
-
-    response = httpx.get(
-        CELESTRAK_URL,
-        timeout=30.0
+    url = (
+        "https://celestrak.org/NORAD/elements/"
+        f"gp.php?GROUP={group}&FORMAT=JSON"
     )
 
+    print(f"Fetching CelesTrak group: {group}")
+
+    response = httpx.get(url, timeout=60.0)
     response.raise_for_status()
 
     records = response.json()
 
-    if not records:
-        raise ValueError("No satellite data received")
+    if not isinstance(records, list) or not records:
+        raise ValueError(f"No valid records received for {group}")
 
-    # Save data in memory
-    _cached_records = records
-    _last_fetch_time = time.monotonic()
+    # Cache the complete group
+    _group_cache[group] = {
+        "records": records,
+        "fetched_at": time.monotonic()
+    }
 
-    print("Satellite data cached successfully.")
+    print(f"Successfully retrieved {len(records)} records.")
 
-    return _cached_records
+    return records
 
-def main():
-    records = fetch_satellite_data()
-    for satellite in records:
-        print("\nSatellite Information")
-        print("---------------------")
-        print("Name:", satellite.get("OBJECT_NAME"))
-        print("NORAD ID:", satellite.get("NORAD_CAT_ID"))
-        print("Epoch:", satellite.get("EPOCH"))
-        print("Inclination:", satellite.get("INCLINATION"))
-        print("Eccentricity:", satellite.get("ECCENTRICITY"))
-        print("Mean Motion:", satellite.get("MEAN_MOTION"))
 
-if __name__ == "__main__":
-    main()
+def fetch_satellite_data(norad_id="25544", force_refresh=False):
+    """
+    Fetch single satellite or group data for backward compatibility.
+    """
+    records = fetch_group_data("STATIONS", force_refresh=force_refresh)
+    matching = [
+        r for r in records
+        if str(r.get("NORAD_CAT_ID")) == str(norad_id)
+    ]
+    if matching:
+        return matching
+    return records
